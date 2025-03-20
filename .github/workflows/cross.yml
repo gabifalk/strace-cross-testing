@@ -56,9 +56,17 @@ jobs:
           export CI_TOP="$PWD"/ci
           export BUILDROOT_OUTPUT=~/.cache/output
           cd "$BUILDROOT_OUTPUT"
-          kernel=images/vmlinux
-          if [ -f images/bzImage ]; then
-              kernel=images/bzImage
-          fi
+          kernel=
+          args='-m 4G'
+          case '${{ matrix.arch }}' in
+              m68k)
+                  kernel=images/vmlinux
+                  args='-m 3399672K -M virt'
+                  ;;
+              s390x)
+                  kernel=images/bzImage
+                  ;;
+              *) exit 1 ;;
+          esac
           find images -ls
-          timeout -v 60s ./host/bin/qemu-system -m 4G -kernel "$kernel" -initrd images/rootfs.cpio -nographic
+          timeout -v 60s ./host/bin/qemu-system $args -kernel "$kernel" -initrd images/rootfs.cpio -nographic
