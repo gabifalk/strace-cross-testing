@@ -49,16 +49,6 @@ jobs:
           path: ~/.cache/output
           key: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}-${{ hashFiles('ci/') }}
 
-      - name: Create cache tarball for upload
-        run: |
-          tar --use-compress-program='zstd -19 -T0 -v' -cf output.tar.zst -C ~/.cache output
-
-      - name: Upload cache
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}
-          path: output.tar.zst
-
       - name: List output images
         run: |
           set -x
