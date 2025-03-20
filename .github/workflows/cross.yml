@@ -1,0 +1,49 @@
+name: cross
+
+env:
+  BUILDROOT_VERSION: 2025.02
+
+on: [push, pull_request]
+
+jobs:
+  cross-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ["m68k", "s390x"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out buildroot
+        uses: actions/checkout@v4
+        with:
+          path: buildroot
+          repository: buildroot/buildroot
+          ref: ${{ env.BUILDROOT_VERSION }}
+
+      - name: Restore buildroot cache for ${{ matrix.arch }}
+        id: restore-buildroot-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/output
+          key: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}-${{ hashFiles('ci/') }}
+          restore-keys: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}
+
+      - name: Build buildroot for ${{ matrix.arch }}
+        if: ${{ steps.restore-buildroot-cache.outputs.cache-matched-key == '' }}
+        run: |
+          export CI_TOP="$PWD"/ci
+          export BUILDROOT_OUTPUT=~/.cache/output
+          mkdir -p "$BUILDROOT_OUTPUT"
+          cp ci/buildroot-config-${{ matrix.arch }} "$BUILDROOT_OUTPUT"/.config
+          make -C buildroot O="$BUILDROOT_OUTPUT" olddefconfig
+          make -C buildroot O="$BUILDROOT_OUTPUT"
+          rm -rf "$BUILDROOT_OUTPUT"/build
+
+      - name: Save buildroot cache for ${{ matrix.arch }}
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/output
+          key: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}-${{ hashFiles('ci/') }}
