@@ -43,7 +43,22 @@ jobs:
           rm -rf "$BUILDROOT_OUTPUT"/build
 
       - name: Save buildroot cache for ${{ matrix.arch }}
+        if: ${{ steps.restore-buildroot-cache.outputs.cache-matched-key == '' }}
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/output
           key: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}-${{ hashFiles('ci/') }}
+
+      - name: List output images
+        run: |
+          set -x
+          ls /home/runner/work/_temp/d2c506db-df10-43f7-a151-271fc736e5ad/cache.tzst ||:
+          export CI_TOP="$PWD"/ci
+          export BUILDROOT_OUTPUT=~/.cache/output
+          cd "$BUILDROOT_OUTPUT"
+          kernel=images/vmlinux
+          if [ -f images/bzImage ]; then
+              kernel=images/bzImage
+          fi
+          find images -ls
+          timeout -v 60s ./host/bin/qemu-system -m 4G -kernel "$kernel" -initrd images/rootfs.cpio -nographic
