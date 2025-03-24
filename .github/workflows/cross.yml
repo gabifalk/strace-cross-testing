@@ -54,6 +54,16 @@ jobs:
           path: strace
           repository: strace/strace
 
+      - name: Create cache tarball for upload
+        run: |
+          tar --use-compress-program='zstd -19 -T0 -v' -cf output.tar.zst -C ~/.cache output
+
+      - name: Upload buildroot cache artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}
+          path: output.tar.zst
+
       - name: Build strace for ${{ matrix.arch }}
         run: |
           export BUILDROOT_OUTPUT=~/.cache/output
