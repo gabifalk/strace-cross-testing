@@ -32,7 +32,7 @@ jobs:
           restore-keys: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}
 
       - name: Build buildroot for ${{ matrix.arch }}
-        if: ${{ steps.restore-buildroot-cache.outputs.cache-matched-key == '' }}
+        #if: ${{ steps.restore-buildroot-cache.outputs.cache-matched-key == '' }}
         run: |
           export CI_TOP="$PWD"/ci
           export BUILDROOT_OUTPUT=~/.cache/output
@@ -42,7 +42,7 @@ jobs:
           make -C buildroot O="$BUILDROOT_OUTPUT"
 
       - name: Save buildroot cache for ${{ matrix.arch }}
-        if: ${{ steps.restore-buildroot-cache.outputs.cache-matched-key == '' }}
+        #if: ${{ steps.restore-buildroot-cache.outputs.cache-matched-key == '' }}
         uses: actions/cache/save@v4
         with:
           path: ~/.cache/output
