@@ -40,7 +40,6 @@ jobs:
           cp ci/buildroot-config-${{ matrix.arch }} "$BUILDROOT_OUTPUT"/.config
           make -C buildroot O="$BUILDROOT_OUTPUT" olddefconfig
           make -C buildroot O="$BUILDROOT_OUTPUT"
-          rm -rf "$BUILDROOT_OUTPUT"/build
 
       - name: Save buildroot cache for ${{ matrix.arch }}
         if: ${{ steps.restore-buildroot-cache.outputs.cache-matched-key == '' }}
