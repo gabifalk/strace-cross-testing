@@ -48,12 +48,6 @@ jobs:
           path: ~/.cache/output
           key: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}-${{ hashFiles('ci/') }}
 
-      - name: Check out strace
-        uses: actions/checkout@v4
-        with:
-          path: strace
-          repository: strace/strace
-
       - name: Create cache tarball for upload
         run: |
           tar --use-compress-program='zstd -19 -T0 -v' -cf output.tar.zst -C ~/.cache output
@@ -63,6 +57,12 @@ jobs:
         with:
           name: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}
           path: output.tar.zst
+
+      - name: Check out strace
+        uses: actions/checkout@v4
+        with:
+          path: strace
+          repository: strace/strace
 
       - name: Build strace for ${{ matrix.arch }}
         run: |
