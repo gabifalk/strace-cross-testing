@@ -1,0 +1,15 @@
+#!/bin/sh -efux
+
+buildroot_output_path="$1"; shift
+arch="$1"; shift
+
+export PATH="$buildroot_output_path/host/bin:$PATH"
+
+case "$arch" in
+	*) toolchain_target="$arch"-buildroot-linux-gnu ;;
+esac
+
+cd strace
+./bootstrap
+./configure --host="$toolchain_target"
+make -j`nproc`

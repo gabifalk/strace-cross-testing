@@ -49,6 +49,17 @@ jobs:
           path: ~/.cache/output
           key: ${{ env.BUILDROOT_VERSION }}-${{ matrix.arch }}-${{ hashFiles('ci/') }}
 
+      - name: Check out strace
+        uses: actions/checkout@v4
+        with:
+          path: strace
+          repository: strace/strace
+
+      - name: Build strace for ${{ matrix.arch }}
+        run: |
+          export BUILDROOT_OUTPUT=~/.cache/output
+          ./ci/build-strace "$BUILDROOT_OUTPUT" ${{ matrix.arch }}
+
       - name: List output images
         run: |
           set -x
