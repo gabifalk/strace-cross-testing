@@ -1,0 +1,86 @@
+#!/bin/sh -efu
+
+# Usage: run-qemu <arch>
+# Honors: STRACE_SRC, OUTPUT_BASE, QEMU_TIMEOUT, QEMU_SMP, STRACE_TESTS, and
+#         STRACE_SHARD/STRACE_SHARDS (run only shard <STRACE_SHARD> of
+#         <STRACE_SHARDS>; both must be set to enable shard mode).
+
+ARCH="${1:?usage: run-qemu <arch>}"
+export ARCH
+
+# shellcheck source=ci/lib.sh
+. "${0%/*}/lib.sh"
+
+qemu="$OUTPUT_BASE/host/bin/$QEMU_BIN"
+[ -x "$qemu" ] ||
+	fatal "$PROG: missing QEMU at $qemu; run build-buildroot $ARCH first"
+
+# Shard mode: write a per-dir test plan into the build tree (which is inside the
+# read-write 'strace' 9p share, so the guest reads it). Clear any stale plan
+# otherwise, so an unsharded run covers the whole suite.
+if [ -n "${STRACE_SHARDS:-}" ] && [ -n "${STRACE_SHARD:-}" ]; then
+	"$CI_TOP/shard-tests" "$ARCH" "$STRACE_SHARD" "$STRACE_SHARDS"
+	echo >&2 "$PROG: shard $STRACE_SHARD/$STRACE_SHARDS plan written to $STRACE_BUILD/.shard-plan"
+else
+	rm -f "$STRACE_BUILD/.shard-plan"
+fi
+
+toolchain="$OUTPUT_BASE/host"
+status_file="$STRACE_BUILD/.strace-check-status"
+rm -f "$status_file"
+
+# Pack the freshly-built tree (incl. any .shard-plan) into an ext2 image served
+# to the guest over virtio-blk: a real local filesystem, far cheaper per-op than
+# the 9p protocol. The source tree still comes via the 9p share; the guest
+# shadows its build dir with this image.
+"$CI_TOP/ext2-pack" "$STRACE_BUILD" "$STRACE_IMAGE"
+
+{
+	printf "mkdir -p '%s'\n" "$STRACE_SRC"
+	printf "mount --bind /mnt '%s'\n" "$STRACE_SRC"
+	printf "mount_9p toolchain '%s'\n" "$toolchain"
+	printf "mount -t ext4 /dev/vda '%s'\n" "$STRACE_BUILD"
+	printf "dir='%s'\n" "$STRACE_BUILD"
+	printf "jobs='%s'\n" "$QEMU_SMP"
+	[ -z "${STRACE_TESTS:-}" ] || printf "tests='%s'\n" "$STRACE_TESTS"
+} > "$STRACE_SRC/.strace-run"
+
+cd "$OUTPUT_BASE"
+
+ninep_bus=
+[ -z "${NINEP_BUS:-}" ] || ninep_bus=",bus=$NINEP_BUS"
+
+set -- "$qemu"
+[ -z "$QEMU_MACHINE" ] || set -- "$@" -M "$QEMU_MACHINE"
+set -- "$@" -m "$QEMU_MEM" -smp "$QEMU_SMP"
+set -- "$@" -kernel "$KERNEL_IMAGE" -initrd images/rootfs.cpio
+set -- "$@" -fsdev "local,id=fsdev0,path=$STRACE_SRC,security_model=none"
+set -- "$@" -device "$NINEP_DEVICE,fsdev=fsdev0,mount_tag=strace$ninep_bus"
+set -- "$@" -fsdev "local,id=fsdev1,path=$toolchain,security_model=none,readonly=on"
+set -- "$@" -device "$NINEP_DEVICE,fsdev=fsdev1,mount_tag=toolchain$ninep_bus"
+set -- "$@" -drive "file=$STRACE_IMAGE,if=none,format=raw,id=straceblk"
+set -- "$@" -device "$BLK_DEVICE,drive=straceblk$ninep_bus"
+set -- "$@" -append "console=$CONSOLE"
+set -- "$@" -nographic -no-reboot
+
+echo >&2 "$PROG: booting $ARCH guest ($QEMU_SMP vcpu, timeout ${QEMU_TIMEOUT:-3600}s)"
+"$@" 2>&1 | tee "$OUTPUT_BASE/console.log"
+
+"$CI_TOP/ext2-extract" "$STRACE_IMAGE" "$STRACE_BUILD"
+
+[ -f "$status_file" ] ||
+	fatal "$PROG: no result from guest (crash or timeout); see $OUTPUT_BASE/console.log"
+
+read -r status < "$status_file"
+echo >&2 "$PROG: guest 'make check' exit status: $status"
+
+if [ "$status" -ne 0 ]; then
+	echo >&2 'BEGIN OF TEST SUITE INFORMATION'
+	(set +f; cd "$STRACE_BUILD" || exit
+		for log in tests*/test-suite*.log tests*/ksysent.gen.log; do
+			[ -f "$log" ] && tail -n 99999 -- "$log"
+		done) >&2 || :
+	echo >&2 'END OF TEST SUITE INFORMATION'
+fi
+
+exit "$status"

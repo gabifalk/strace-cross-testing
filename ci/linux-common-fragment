@@ -1,0 +1,12 @@
+CONFIG_DEBUG_INFO_NONE=y
+CONFIG_NET_9P=y
+CONFIG_NET_9P_VIRTIO=y
+CONFIG_9P_FS=y
+# virtio transports for the 9p shares: mmio for m68k "virt", ccw for s390x,
+# pci for sparc64 "sun4u". Each is a no-op on arches that lack it.
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_MMIO=y
+CONFIG_VIRTIO_CCW=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_EXT4_FS=y

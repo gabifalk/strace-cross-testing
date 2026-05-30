@@ -1,0 +1,29 @@
+#!/bin/sh -efu
+
+# Usage: ext2-extract <image> <dest-dir>
+# Unpack the guest's results from <image> into <dest-dir>, mirroring what the 9p
+# share exposed directly: the .strace-check-status exit status plus every
+# automake *.log/*.trs (incl. test-suite.log) from each active test dir. The
+# bulk of the image (test binaries) is unchanged from the host tree and is not
+# extracted.
+
+img="${1:?usage: ext2-extract <image> <dest-dir>}"
+dest="${2:?usage: ext2-extract <image> <dest-dir>}"
+
+PATH="$PATH:/usr/sbin:/sbin"
+
+debugfs -R "dump /.strace-check-status $dest/.strace-check-status" "$img" 2>/dev/null || :
+
+# Collect dump commands for one debugfs session rather than spawning per file.
+cmds=$(mktemp)
+trap 'rm -f "$cmds"' EXIT
+
+for d in $(debugfs -R "ls -p /" "$img" 2>/dev/null |
+		awk -F/ '$6 ~ /^tests/ && $3 ~ /^04/ {print $6}'); do
+	mkdir -p "$dest/$d"
+	debugfs -R "ls -p /$d" "$img" 2>/dev/null |
+		awk -F/ -v d="$d" -v b="$dest" \
+			'$6 ~ /(\.log|\.trs)$/ { printf "dump /%s/%s %s/%s/%s\n", d, $6, b, d, $6 }'
+done > "$cmds"
+
+[ ! -s "$cmds" ] || debugfs -f "$cmds" "$img" >/dev/null 2>&1 || :

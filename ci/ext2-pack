@@ -1,0 +1,16 @@
+#!/bin/sh -efu
+
+# Usage: ext2-pack <source-dir> <image>
+# Build a fresh ext2 <image> populated from <source-dir>.
+
+src="${1:?usage: ext2-pack <source-dir> <image>}"
+img="${2:?usage: ext2-pack <source-dir> <image>}"
+
+PATH="$PATH:/usr/sbin:/sbin"
+
+command -v mke2fs >/dev/null ||
+	{ echo >&2 "ext2-pack: mke2fs not found; install e2fsprogs"; exit 1; }
+
+rm -f "$img"
+truncate -s 3G "$img"
+mke2fs -F -q -t ext2 -d "$src" "$img"

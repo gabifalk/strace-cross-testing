@@ -1,0 +1,66 @@
+From 3d4840be33f0c7bd798254f437e8462a0e02b16b Mon Sep 17 00:00:00 2001
+From: Gabi Falk <gabifalk@gmx.com>
+Date: Mon, 1 Jun 2026 08:00:00 +0000
+Subject: [PATCH] tests: allow get_thread_area in seccomp-filter-v
+
+This is the seccomp(SECCOMP_SET_MODE_FILTER) counterpart of the same
+fix already applied to prctl-seccomp-filter-v.
+
+On architectures without a dedicated thread-pointer register, notably
+m68k, libc reads the thread pointer with a get_thread_area syscall.
+On m68k __m68k_read_tp() issues get_thread_area(2), and it is reached
+from ordinary libc code, e.g. whenever errno is accessed.
+
+The seccomp filter installed by this test allows only close, exit and
+exit_group, with a default action of SECCOMP_RET_KILL_THREAD.  After
+the filter is installed the test calls close(2), and the libc wrapper
+touches errno, which on m68k performs a get_thread_area syscall that
+the filter does not permit.  The process is therefore killed by SIGSYS
+before it can exit, and the test fails with
+
+    seccomp-filter-v.gen.test: failed test: \
+        ../seccomp-filter-v failed with code 159
+
+Allow get_thread_area in the filter (and emit it in the expected
+decoding) on architectures that define __NR_get_thread_area, so the
+post-filter libc syscalls are not killed.  Architectures that do not
+define the syscall are unaffected.
+
+* tests/seccomp-filter-v.c (filter_c): Allow get_thread_area if
+__NR_get_thread_area is defined.
+(main): Print the corresponding expected line.
+---
+ tests/seccomp-filter-v.c | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/tests/seccomp-filter-v.c b/tests/seccomp-filter-v.c
+index 55c2117c0..b74e1a717 100644
+--- a/tests/seccomp-filter-v.c
++++ b/tests/seccomp-filter-v.c
+@@ -52,6 +52,13 @@ static const struct sock_filter filter_c[] = {
+ 	SOCK_FILTER_ALLOW_SYSCALL(close),
+ 	SOCK_FILTER_ALLOW_SYSCALL(exit),
+ 	SOCK_FILTER_ALLOW_SYSCALL(exit_group),
++#ifdef __NR_get_thread_area
++	/* m68k and other no-TLS-register architectures read the thread
++	 * pointer via a get_thread_area syscall, which libc invokes from
++	 * the syscall wrappers below (e.g. to access errno); allow it so
++	 * the process is not killed before it can exit.  */
++	SOCK_FILTER_ALLOW_SYSCALL(get_thread_area),
++#endif
+ 
+ 	/* deny syscalls */
+ 	SOCK_FILTER_DENY_SYSCALL(sync, EBUSY),
+@@ -160,6 +167,9 @@ main(void)
+ 	PRINT_ALLOW_SYSCALL(close);
+ 	PRINT_ALLOW_SYSCALL(exit);
+ 	PRINT_ALLOW_SYSCALL(exit_group);
++#ifdef __NR_get_thread_area
++	PRINT_ALLOW_SYSCALL(get_thread_area);
++#endif
+ 
+ 	PRINT_DENY_SYSCALL(sync, EBUSY),
+ 	PRINT_DENY_SYSCALL(setsid, EPERM),
+-- 
+gabi
+

@@ -1,0 +1,40 @@
+#!/bin/sh -efu
+# shellcheck enable=all disable=SC2250,SC3043
+
+# Usage: shard-tests <arch> <index> <total>
+# Writes $STRACE_BUILD/.shard-plan with one line per present test directory:
+#   <dir> <space-separated test names for this shard>
+
+ARCH="${1:?usage: shard-tests <arch> <index> <total>}"
+index="${2:?usage: shard-tests <arch> <index> <total>}"
+total="${3:?usage: shard-tests <arch> <index> <total>}"
+export ARCH
+
+# shellcheck source=ci/lib.sh
+. "${0%/*}/lib.sh"
+
+[ "$total" -ge 1 ] 2>/dev/null || fatal "$PROG: invalid shard total: $total"
+{ [ "$index" -ge 1 ] && [ "$index" -le "$total" ]; } 2>/dev/null ||
+	fatal "$PROG: shard index $index out of range 1..$total"
+
+plan="$STRACE_BUILD/.shard-plan"
+: > "$plan"
+
+strace_test_dirs="$(strace_test_dirs)"
+for dir in $strace_test_dirs; do
+	d="$STRACE_BUILD/$dir"
+	# shellcheck disable=SC2016  # $(TESTS) is Make syntax, not shell
+	list=$(make -C "$d" --no-print-directory \
+		--eval='_strace_list:;@printf "%s\n" $(TESTS)' \
+		_strace_list 2>/dev/null | sort | awk 'NF')
+	[ -n "$list" ] || continue
+	count=$(printf '%s\n' "$list" | wc -l)
+	size=$(( (count + total - 1) / total ))
+	start=$(( (index - 1) * size ))
+	names=$(printf '%s\n' "$list" |
+		awk -v s="$start" -v z="$size" 'NR > s && NR <= s + z' |
+		tr '\n' ' ')
+	names=${names% }
+	[ -n "$names" ] || continue
+	printf '%s %s\n' "$dir" "$names" >> "$plan"
+done

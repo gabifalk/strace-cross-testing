@@ -1,0 +1,12 @@
+#!/bin/sh -efu
+
+# Usage: ./ci/run <arch>
+# Honors: BUILDROOT_SRC, STRACE_SRC, STRACE_REPO, STRACE_REF, OUTPUT_BASE,
+#         QEMU_TIMEOUT, QEMU_SMP, STRACE_TESTS.
+
+arch="${1:?usage: run <arch>}"
+dir="${0%/*}"
+
+"$dir/build-buildroot" "$arch"
+"$dir/build-strace" "$arch"
+"$dir/run-qemu" "$arch"

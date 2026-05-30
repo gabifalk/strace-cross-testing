@@ -1,0 +1,46 @@
+#!/bin/sh -efu
+
+# Usage: ./ci/build-strace <arch>
+# Honors: STRACE_SRC, STRACE_REPO, STRACE_REF, OUTPUT_BASE.
+
+ARCH="${1:?usage: build-strace <arch>}"
+export ARCH
+
+# shellcheck source=ci/lib.sh
+. "${0%/*}/lib.sh"
+
+[ -d "$OUTPUT_BASE/host/bin" ] ||
+	fatal "$PROG: missing toolchain at $OUTPUT_BASE/host/bin; run build-buildroot $ARCH first"
+PATH="$OUTPUT_BASE/host/bin:$PATH"
+export PATH
+
+if [ ! -d "$STRACE_SRC" ]; then
+	git clone --branch "${STRACE_REF:-master}" \
+		"https://github.com/${STRACE_REPO:-strace/strace}" "$STRACE_SRC"
+fi
+
+set +f
+for patch in "$CI_TOP"/patches/*.patch; do
+	[ -e "$patch" ] || continue
+	git -C "$STRACE_SRC" -c user.name=ci -c user.email=ci@localhost \
+		am --whitespace=nowarn "$patch" ||
+		{ git -C "$STRACE_SRC" am --abort 2>/dev/null ||:; \
+		  fatal "$PROG: cannot apply ${patch##*/}"; }
+done
+set -f
+
+if [ ! -x "$STRACE_SRC/configure" ]; then
+	(cd "$STRACE_SRC" && ./bootstrap)
+fi
+
+mkdir -p "$STRACE_BUILD"
+cd "$STRACE_BUILD"
+"$STRACE_SRC/configure" --host="$ARCH-buildroot-linux-gnu"
+make -j"$(nproc)"
+
+make -j"$(nproc)" check-prerequisites
+
+strace_test_dirs="$(strace_test_dirs)"
+for d in $strace_test_dirs; do
+	make -C "$STRACE_BUILD/$d" -j"$(nproc)"
+done

@@ -1,0 +1,51 @@
+#!/bin/sh
+
+case "${1:-}" in
+	start) ;;
+	*) exit 0 ;;
+esac
+
+mount -t proc  proc /proc 2>/dev/null || :
+mount -t sysfs sys  /sys  2>/dev/null || :
+
+mount_9p() {
+	mkdir -p "$2"
+	mount -t 9p -o trans=virtio,version=9p2000.L,cache=loose "$1" "$2" \
+		|| echo "strace-check: failed to mount $1 at $2" >&2
+}
+
+mkdir -p /mnt
+if ! mount -t 9p -o trans=virtio,version=9p2000.L,cache=loose strace /mnt 2>/dev/null; then
+	echo "strace-check: cannot mount strace share" >&2
+	poweroff -f
+fi
+
+dir=
+jobs=1
+tests=
+# shellcheck source=/dev/null
+[ -f /mnt/.strace-run ] && . /mnt/.strace-run
+
+if [ -n "$dir" ] && cd "$dir"; then
+	if [ -f .shard-plan ]; then
+		# Sharded: one make per listed dir, OR-combine exit statuses.
+		rc=0
+		while read -r pdir ptests; do
+			[ -n "$pdir" ] || continue
+			make -C "$pdir" -k check -j"$jobs" TESTS="$ptests" </dev/null \
+				|| rc=$?
+		done < .shard-plan
+		echo "$rc" > .strace-check-status
+	elif [ -n "$tests" ]; then
+		make -k check -j"$jobs" TESTS="$tests"
+		echo "$?" > .strace-check-status
+	else
+		make -k check -j"$jobs"
+		echo "$?" > .strace-check-status
+	fi
+	sync
+else
+	echo "strace-check: cannot enter strace dir '$dir'" >&2
+fi
+
+poweroff -f

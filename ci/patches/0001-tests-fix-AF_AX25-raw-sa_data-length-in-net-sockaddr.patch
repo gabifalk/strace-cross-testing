@@ -1,0 +1,47 @@
+From 946c27ee7526b0d6631ed4af2d22e5e9cf60fef8 Mon Sep 17 00:00:00 2001
+From: Gabi Falk <gabifalk@gmx.com>
+Date: Mon, 1 Jun 2026 00:00:00 +0000
+Subject: [PATCH] tests: fix AF_AX25 raw sa_data length in net-sockaddr on m68k
+
+struct sockaddr_ax25 ends with an int sax25_ndigis following a 7-byte
+ax25_address, so its size depends on the alignment of int: 16 bytes
+where int is 4-byte aligned, but 14 bytes on ABIs that align int to 2,
+notably m68k.
+
+check_ax25() connects with an address length of
+sizeof(struct sockaddr_ax25) - 1, one byte short of a full
+sockaddr_ax25, so strace prints the raw sa_data of
+addrlen - sizeof(sa_family) bytes.  That length is therefore
+sizeof(struct sockaddr_ax25) - 3: 13 on most architectures, but 11 on
+m68k.  The test hardcoded the 13-byte form, so on m68k it failed with
+
+    net-sockaddr.gen.test: failed test: \
+        ../../src/strace -a24 -e trace=connect ../net-sockaddr \
+        output mismatch
+
+Emit the two trailing sa_data bytes only when struct sockaddr_ax25 is
+large enough to contain them.
+
+* tests/net-sockaddr.c (check_ax25): Adjust the expected raw sa_data
+to the size of struct sockaddr_ax25.
+---
+ tests/net-sockaddr.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/tests/net-sockaddr.c b/tests/net-sockaddr.c
+index eadbf17f5..a62fe7c51 100644
+--- a/tests/net-sockaddr.c
++++ b/tests/net-sockaddr.c
+@@ -352,7 +352,8 @@ check_ax25(void)
+ 	rc = connect(-1, sax_void, sizeof(struct sockaddr_ax25) - 1);
+ 	pidns_print_leader();
+ 	printf("connect(-1, {sa_family=AF_AX25, sa_data=\"\\202\\203\\204\\205"
+-	       "\\206\\207\\210\\211\\212\\213\\214\\215\\216\"}, %zu) = %s\n",
++	       "\\206\\207\\210\\211\\212\\213\\214%s\"}, %zu) = %s\n",
++	       sizeof(struct sockaddr_ax25) > 14 ? "\\215\\216" : "",
+ 	       sizeof(struct sockaddr_ax25) - 1, sprintrc(rc));
+ 
+ 	memcpy(sax, &ax25, sizeof(ax25));
+-- 
+gabi
+

@@ -1,0 +1,47 @@
+From fd55f2d1aa5173f3224c0663c51555777a9dce62 Mon Sep 17 00:00:00 2001
+From: Gabi Falk <gabifalk@gmx.com>
+Date: Mon, 1 Jun 2026 08:00:00 +0000
+Subject: [PATCH] tests: limit restart_syscall-p to restart_syscall and
+ exit_group
+
+restart_syscall-p.test attaches to a sleeping process and traces every
+syscall it makes until it exits.  On architectures without a dedicated
+thread-pointer register, notably m68k, libc reads the thread pointer
+with a get_thread_area syscall (on m68k __m68k_read_tp() issues
+get_thread_area(2)), and it is reached from ordinary libc code, e.g. the
+exit path that runs once the interrupted nanosleep has resumed.  strace
+dutifully decodes these syscalls, so the trace gains a series of
+
+    get_thread_area() = 0x...
+
+lines between restart_syscall and exit_group, and the test fails with
+
+    restart_syscall-p.test: failed test: \
+        ../../src/strace -qq -a14 -p PID output mismatch
+
+The sibling attach tests already restrict the traced set for exactly
+this reason: attach-p-cmd and attach-f-p use -echdir, and strace-ff uses
+-eexit_group.  Do the same here and trace only restart_syscall and
+exit_group, which is all this test verifies.  The expected output is
+unchanged, and architectures that issue no extra libc syscalls in this
+window are unaffected.
+
+* tests/restart_syscall-p.test: Add -e trace=restart_syscall,exit_group.
+---
+ tests/restart_syscall-p.test | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tests/restart_syscall-p.test b/tests/restart_syscall-p.test
+index 643ec5e22..3949a8144 100755
+--- a/tests/restart_syscall-p.test
++++ b/tests/restart_syscall-p.test
+@@ -16,5 +16,5 @@ tracee_pid=$!
+ 
+ ../sleep 1
+ 
+-run_strace -qq -a14  -p $tracee_pid
++run_strace -qq -a14 -e trace=restart_syscall,exit_group -p $tracee_pid
+ match_diff
+-- 
+gabi
+

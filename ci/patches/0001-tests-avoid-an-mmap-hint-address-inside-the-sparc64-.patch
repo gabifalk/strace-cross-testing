@@ -1,0 +1,57 @@
+From e7b5c4534c49e9ff79a2e0927c54121b8a5e0f53 Mon Sep 17 00:00:00 2001
+From: Gabi Falk <gabifalk@gmx.com>
+Date: Sun, 31 May 2026 08:00:00 +0000
+Subject: [PATCH] tests: avoid an mmap hint address inside the sparc64 VA hole
+
+tests/mmap.c passes a fixed hint address of 0xfacefeed000 (~15.6 TiB) to
+mmap(2).  On sparc64 the upper part of the 64-bit address space is an
+architecturally unmappable "VA hole", and the kernel rejects an mmap whose
+address lands in it with EINVAL -- even when MAP_FIXED is not set.  Unlike
+most architectures, which treat the address as a hint and silently relocate
+an unusable one, sparc64 validates it up front via the arch_mmap_check hook
+(sparc_mmap_check() -> invalid_64bit_range() in
+arch/sparc/kernel/sys_sparc_64.c), called before get_unmapped_area().
+
+On sun4u/UltraSPARC (and the QEMU sun4u default) the hole starts at 2^43
+(8 TiB), so 0xfacefeed000 is rejected and the test's own mmap() fails with
+
+    mmap.c: mmap: Invalid argument
+
+before strace decoding is even exercised.  Because the mmap binaries are
+listed in pure_executables.list, this also makes the ~13 test_trace_expr
+based tests fail intermittently whenever they sample mmap-Xraw.
+
+Use a hint comfortably below the hole (valid on all sparc64, since the hole
+only moves to higher addresses on wider-VA sun4v/Niagara CPUs) on sparc64;
+other architectures keep the original address.
+---
+ tests/mmap.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/tests/mmap.c b/tests/mmap.c
+index 23b77a52a..4a4814ef2 100644
+--- a/tests/mmap.c
++++ b/tests/mmap.c
+@@ -27,7 +27,19 @@ main(int ac, char **av)
+ 
+ #if ULONG_MAX > 4294967295UL
+ 	offset = 0xcafedeadbeef000ULL & -pagesize;
++# if defined __sparc__
++	/*
++	 * On sparc64 the upper part of the address space is an unmappable
++	 * "VA hole".  The kernel rejects an mmap whose address falls inside it
++	 * with EINVAL even for a non-MAP_FIXED hint (sparc_mmap_check() ->
++	 * invalid_64bit_range() validates the address instead of silently
++	 * relocating it the way most other architectures do).  On sun4u the
++	 * hole starts at 2^43 (8 TiB), so use a hint comfortably below it.
++	 */
++	addr = (void *) (uintmax_t) (0x5afefeed000 & -pagesize);
++# else
+ 	addr = (void *) (uintmax_t) (0xfacefeed000 & -pagesize);
++# endif
+ #else
+ 	offset = 0xdeadbeef000ULL & -pagesize;
+ 	addr = (void *) (unsigned int) (0xfaced000 & -pagesize);
+-- 
+gabi
+

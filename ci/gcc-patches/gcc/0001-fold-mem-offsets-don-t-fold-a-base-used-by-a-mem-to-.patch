@@ -1,0 +1,126 @@
+From fda653cfc876814ebfdc57f0d62430a52248512a Mon Sep 17 00:00:00 2001
+From: Gabi Falk <gabifalk@gmx.com>
+Date: Mon, 1 Jun 2026 12:00:00 +0000
+Subject: [PATCH] fold-mem-offsets: don't fold a base used by a mem-to-mem
+ destination
+
+When the fold-mem-offsets pass considers eliminating an "R = Rbase + C"
+instruction by folding the constant C into the memory accesses that use R,
+it requires (in fold_offsets) that every use of R be a foldable memory
+access whose offset can absorb C.
+
+For a use that is a memory-to-memory move, get_fold_mem_root() selects the
+*source* memory operand, because it tests MEM_P (SET_SRC (set)) before
+MEM_P (SET_DEST (set)).  Such a move is therefore recorded in
+can_fold_insns on account of its source operand.  If R is used in the
+*destination* address of that same move, folding C into R leaves the
+destination address unadjusted and the move stores to the wrong location.
+
+The existing special case already rejects a store that mentions the folded
+register in its value (SET_SRC).  Add the symmetric check: reject a
+memory-to-memory move (MEM_P (SET_SRC)) that mentions the folded register in
+its destination address (SET_DEST).
+
+This was originally observed as a Linux kernel NULL-pointer dereference on
+m68k: splice_to_socket() emitted the bvec[bc].bv_page store -- a
+memory-to-memory move -- to the wrong slot, so sendfile() to a socket wrote
+the page pointer 320 bytes off and the kernel followed a NULL pointer.
+
+gcc/ChangeLog:
+
+	* fold-mem-offsets.cc (fold_offsets): Do not fold when the
+	register is referenced in the destination address of a
+	memory-to-memory move.
+
+gcc/testsuite/ChangeLog:
+
+	* gcc.target/m68k/fold-mem-offsets-1.c: New test.
+
+Signed-off-by: Gabi Falk <gabifalk@gmx.com>
+---
+ gcc/fold-mem-offsets.cc                       |  7 +++
+ .../gcc.target/m68k/fold-mem-offsets-1.c      | 54 +++++++++++++++++++
+ 2 files changed, 61 insertions(+)
+ create mode 100644 gcc/testsuite/gcc.target/m68k/fold-mem-offsets-1.c
+
+diff --git a/gcc/fold-mem-offsets.cc b/gcc/fold-mem-offsets.cc
+index 8480f134ed9..2a2626cc685 100644
+--- a/gcc/fold-mem-offsets.cc
++++ b/gcc/fold-mem-offsets.cc
+@@ -545,6 +545,13 @@ fold_offsets (rtx_insn *insn, rtx reg, bool analyze, bitmap foldable_insns)
+ 	  if (use_set && MEM_P (SET_DEST (use_set))
+ 	      && reg_mentioned_p (dest, SET_SRC (use_set)))
+ 	    return 0;
++
++	  /* Likewise, a memory-to-memory move is not foldable if its
++	     destination address mentions DEST, as get_fold_mem_root folds the
++	     source memory.  */
++	  if (use_set && MEM_P (SET_SRC (use_set))
++	      && reg_mentioned_p (dest, SET_DEST (use_set)))
++	    return 0;
+ 	}
+ 
+       bitmap_set_bit (&can_fold_insns, INSN_UID (def));
+diff --git a/gcc/testsuite/gcc.target/m68k/fold-mem-offsets-1.c b/gcc/testsuite/gcc.target/m68k/fold-mem-offsets-1.c
+new file mode 100644
+index 00000000000..2a462843ebe
+--- /dev/null
++++ b/gcc/testsuite/gcc.target/m68k/fold-mem-offsets-1.c
+@@ -0,0 +1,54 @@
++/* fold-mem-offsets misfolded the offset of a memory-to-memory store sharing a
++   base register with reg->mem stores, sending it to the wrong slot.  Reduced
++   from the kernel's splice_to_socket().  -ffixed-a2 and the index/address
++   compare are needed to force the single-base addressing that exposes it; do
++   not "simplify" them.  */
++
++/* { dg-do compile } */
++/* { dg-options "-O2 -ffixed-a2 -m68040" } */
++
++struct pipe_buffer { int page; int offset, len; };
++struct bio_vec { int bv_page; int bv_len; int bv_offset; };
++
++static inline void
++bvec_set_page (struct bio_vec *bv, int *page, int offset)
++{
++  bv->bv_page = *page;
++  bv->bv_offset = offset;
++}
++
++_Bool pipe_empty (void);
++_Bool pipe_is_empty (void);
++struct pipe_buffer *pipe_buf (void);
++void iov_iter_bvec (int *, struct bio_vec *, int, int);
++
++void
++splice_to_socket (int len)
++{
++  struct bio_vec bvec[6];
++  int msg;
++
++  while (len)
++    {
++      int bc = 0;
++      unsigned remain = len;
++
++      while (pipe_is_empty ())
++	;
++      while (pipe_empty ())
++	{
++	  struct pipe_buffer buf = *pipe_buf ();
++	  unsigned seg;
++	  if (!buf.len)
++	    continue;
++	  seg = len < buf.len;
++	  bvec_set_page (&bvec[bc++], &buf.page, buf.offset);
++	  remain -= seg;
++	  if (remain || (unsigned long) bc >= (unsigned long) bvec)
++	    break;
++	}
++      iov_iter_bvec (&msg, bvec, bc, -remain);
++    }
++}
++
++/* { dg-final { scan-assembler-not "%d\[0-9\],\[1-9\]\[0-9\]*\\(%a" } } */
+-- 
+gabi
+

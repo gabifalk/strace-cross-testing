@@ -1,0 +1,62 @@
+#!/bin/sh -efu
+# Diagnostic harness: boot a guest and run a standalone probe binary instead of
+# 'make check'. Reuses lib.sh for per-arch QEMU settings; only the strace 9p
+# share is needed (probes are statically linked). Probe output is written to the
+# guest serial console (captured at $OUTPUT_BASE/console-diag.log) rather than a
+# file on the 9p share, which is mounted cache=loose and can return stale reads.
+#
+# Cross-compile a probe with the target gcc to strace/<name>, then:
+#   ARCH=<arch> PROBE=<name> ci/diag-qemu
+# and read the block between ###PROBE-BEGIN/###PROBE-END in console-diag.log.
+
+ARCH="${ARCH:?set ARCH=<arch> (e.g. m68k, s390x, sparc64)}"
+export ARCH
+
+# shellcheck source=ci/lib.sh
+. "${0%/*}/lib.sh"
+
+qemu="$OUTPUT_BASE/host/bin/$QEMU_BIN"
+[ -x "$qemu" ] || fatal "missing QEMU at $qemu"
+
+# PROBE names the statically-linked binary (built into $STRACE_SRC, served at
+# /mnt in the guest) that the guest runs. No default: cross-compile your probe
+# to strace/<name> first, then pass PROBE=<name>.
+PROBE="${PROBE:?set PROBE=<name> of a static binary built into the strace tree}"
+
+# The guest init (S99strace-check) mounts the 'strace' 9p share at /mnt and
+# sources /mnt/.strace-run. Empty dir= makes it skip 'make check'.
+# Write diagnostics straight to the serial console (no 9p round-trip; the
+# 'strace' share is cache=loose, so host-side reads of a file on it can be
+# stale). qemu mirrors the console to console-diag.log on the host, fresh
+# per boot. Wrap markers in BEGIN/END so the run is unambiguous.
+cat > "$STRACE_SRC/.strace-run" <<EOF
+{
+echo "###PROBE-BEGIN $PROBE"
+echo "## kernel: \$(uname -srm)"
+echo "## actions_avail: \$(cat /proc/sys/kernel/seccomp/actions_avail 2>&1)"
+/mnt/$PROBE 2>&1
+echo "###PROBE-END rc=\$?"
+} > /dev/console 2>&1
+dir=
+EOF
+
+cd "$OUTPUT_BASE"
+
+ninep_bus=
+[ -z "${NINEP_BUS:-}" ] || ninep_bus=",bus=$NINEP_BUS"
+
+set -- "$qemu"
+[ -z "$QEMU_MACHINE" ] || set -- "$@" -M "$QEMU_MACHINE"
+set -- "$@" -m "$QEMU_MEM" -smp "$QEMU_SMP"
+set -- "$@" -kernel "$KERNEL_IMAGE" -initrd images/rootfs.cpio
+set -- "$@" -fsdev "local,id=fsdev0,path=$STRACE_SRC,security_model=none"
+set -- "$@" -device "$NINEP_DEVICE,fsdev=fsdev0,mount_tag=strace$ninep_bus"
+set -- "$@" -append "console=$CONSOLE" -display none \
+	-serial "file:$OUTPUT_BASE/console-diag.log" -no-reboot
+
+# Optional debug args (instruction trace etc). e.g.
+#   QEMU_DBG="-one-insn-per-tb -d in_asm,cpu -dfilter 0xa5a4a+0x2ca2 -D $PWD/trace.log"
+[ -z "${QEMU_DBG:-}" ] || set -- "$@" $QEMU_DBG
+
+echo >&2 "diag-qemu: booting $ARCH guest (probe=$PROBE)"
+"$@" </dev/null

@@ -1,0 +1,21 @@
+#!/bin/sh -efu
+
+ARCH="${1:?usage: build-buildroot <arch>}"
+export ARCH
+
+# shellcheck source=ci/lib.sh
+. "${0%/*}/lib.sh"
+
+config="$CI_TOP/buildroot-config-$ARCH"
+[ -f "$config" ] || fatal "$PROG: no buildroot config for arch '$ARCH' ($config)"
+
+if [ ! -d "$BUILDROOT_SRC" ]; then
+	git clone --depth 1 --branch "$BR_VERSION" \
+		https://github.com/buildroot/buildroot "$BUILDROOT_SRC"
+fi
+
+mkdir -p "$OUTPUT_BASE"
+cp "$config" "$OUTPUT_BASE/.config"
+
+make -C "$BUILDROOT_SRC" O="$OUTPUT_BASE" olddefconfig
+make -C "$BUILDROOT_SRC" O="$OUTPUT_BASE"
