@@ -1,4 +1,5 @@
 #!/bin/sh -efu
+# SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck enable=all disable=SC2250,SC3043
 
 : "${ARCH:?}"

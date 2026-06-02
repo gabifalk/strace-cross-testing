@@ -1,4 +1,5 @@
 #!/bin/sh -efu
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 # Usage: ext2-pack <source-dir> <image>
 # Build a fresh ext2 <image> populated from <source-dir>.

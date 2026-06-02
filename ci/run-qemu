@@ -1,4 +1,5 @@
 #!/bin/sh -efu
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 # Usage: run-qemu <arch>
 # Honors: STRACE_SRC, OUTPUT_BASE, QEMU_TIMEOUT, QEMU_SMP, STRACE_TESTS, and

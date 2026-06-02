@@ -1,4 +1,5 @@
 #!/bin/sh -efu
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 # Prints the per-arch cache/artifact key (<buildroot-version>-<arch>-cfg<N>).
 #

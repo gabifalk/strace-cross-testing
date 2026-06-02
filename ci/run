@@ -1,4 +1,5 @@
 #!/bin/sh -efu
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 # Usage: ./ci/run <arch>
 # Honors: BUILDROOT_SRC, STRACE_SRC, STRACE_REPO, STRACE_REF, OUTPUT_BASE,

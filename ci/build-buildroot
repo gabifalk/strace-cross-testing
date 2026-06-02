@@ -1,4 +1,5 @@
 #!/bin/sh -efu
+# SPDX-License-Identifier: GPL-2.0-or-later
 
 ARCH="${1:?usage: build-buildroot <arch>}"
 export ARCH
