@@ -7,8 +7,8 @@ GitHub Actions build a cross toolchain and a minimal root filesystem with
 [Buildroot](https://buildroot.org/), cross-compile strace and its test suite
 against that toolchain, then boot the target architecture under QEMU system
 emulation and run `make check` inside the guest. The point is to exercise
-strace's per-architecture support — syscall decoders, register/ABI handling,
-struct layouts — on platforms that rarely get tested elsewhere.
+strace's per-architecture support -- syscall decoders, register/ABI handling,
+struct layouts -- on platforms that rarely get tested elsewhere.
 
 ## Architectures
 
@@ -25,18 +25,16 @@ Each architecture has a Buildroot defconfig under
 
 ## Status
 
-The strace test suite passes on all three architectures. `s390x` is clean
-out of the box; `m68k` and `sparc64` need the local patches below to pass.
+| Patches  | `m68k` | `s390x` | `sparc64` |
+|----------|:------:|:-------:|:---------:|
+| strace   | -- (4) |   --    |   -- (1)  |
+| gcc      |   1    |   --    |    --     |
+| elfutils |   --   |   --    |    --     |
 
-| Arch      | strace patches | toolchain patches |
-|-----------|:--------------:|:-----------------:|
-| `m68k`    | 4              | 1 (GCC codegen)   |
-| `s390x`   | —              | —                 |
-| `sparc64` | 1              | —                 |
-
-These are bugs found by the cross-testing itself — in the strace tests on
-these architectures, and one m68k compiler miscompile — and are reported
-upstream.
+A plain number is patches currently carried; a number in parentheses is patches
+since accepted upstream and no longer carried. These are bugs found by the
+cross-testing itself -- in the strace tests on these architectures, and one m68k
+compiler miscompile -- and are reported upstream.
 
 ## How it works
 
@@ -44,12 +42,12 @@ The workflow ([`.github/workflows/cross.yml`](.github/workflows/cross.yml)) has
 two jobs, run as a matrix over the architectures:
 
 1. **build**
-   - [`ci/build-buildroot <arch>`](ci/build-buildroot) — runs Buildroot with the
+   - [`ci/build-buildroot <arch>`](ci/build-buildroot) -- runs Buildroot with the
      per-arch config to produce the cross toolchain, kernel, and an initramfs
      (busybox + the host QEMU build).
-   - [`ci/build-strace <arch>`](ci/build-strace) — checks out upstream strace,
-     applies the patches in [`ci/strace-patches/`](ci/strace-patches), and
-     cross-compiles strace plus every `tests*/` directory with the toolchain.
+   - [`ci/build-strace <arch>`](ci/build-strace) -- checks out upstream strace,
+     applies the patches in [`ci/strace-patches/`](ci/strace-patches), and cross-compiles
+     strace plus every `tests*/` directory with the toolchain.
    - The Buildroot output and the strace build tree are cached (and uploaded as
      artifacts) keyed on the Buildroot version, arch config, strace commit, and
      patch set, so the test job reuses them without rebuilding.
@@ -68,22 +66,33 @@ two jobs, run as a matrix over the architectures:
 ## Patches
 
 Failures uncovered on these architectures are tracked as patches and reported
-upstream.
-
-**strace** ([`ci/strace-patches/`](ci/strace-patches), applied by `ci/build-strace`):
-
-- m68k — `restart_syscall-p`, `prctl-seccomp-filter-v`, `seccomp-filter-v`: on
-  m68k libc reads the thread pointer via `get_thread_area`, which pollutes
-  attach traces and trips the seccomp filters.
-- m68k — `net-sockaddr`: `struct sockaddr_ax25` is 14 bytes on m68k (2-byte
-  `int` alignment) vs 16 elsewhere.
-- sparc64 — `mmap`: the test's fixed hint address falls inside the sparc64 VA
-  hole.
+upstream. The patches still carried here are applied at build time by
+`ci/build-strace`.
 
 **GCC** ([`ci/patches/gcc/`](ci/patches/gcc)):
 
-- m68k — `fold-mem-offsets`: the pass folds a constant offset into a base
+- m68k -- `fold-mem-offsets`: the pass folds a constant offset into a base
   register still used by a memory-to-memory move, miscompiling code at `-O2`.
+
+## Upstreamed
+
+These strace test fixes were found by the cross-testing and have since been
+accepted upstream, so they are no longer carried in
+[`ci/strace-patches/`](ci/strace-patches):
+
+- m68k -- `restart_syscall-p`
+  ([`824c818b0`](https://github.com/strace/strace/commit/824c818b0)),
+  `prctl-seccomp-filter-v`, `seccomp-filter-v` (both folded into
+  [`c9ea4e35c`](https://github.com/strace/strace/commit/c9ea4e35c)): on m68k
+  libc reads the thread pointer via `get_thread_area`, which polluted attach
+  traces and tripped the seccomp filters.
+- m68k -- `net-sockaddr`
+  ([`090b1be72`](https://github.com/strace/strace/commit/090b1be72)):
+  `struct sockaddr_ax25` is 14 bytes on m68k (2-byte `int` alignment) vs 16
+  elsewhere.
+- sparc64 -- `mmap`
+  ([`bc4934e36`](https://github.com/strace/strace/commit/bc4934e36)): the
+  hardcoded mmap hint address the test passes fell inside the sparc64 VA hole.
 
 ## Running locally
 
@@ -98,7 +107,7 @@ export STRACE_SRC=$PWD/strace BUILDROOT_SRC=$PWD/buildroot OUTPUT_BASE=$PWD/outp
 ```
 
 Honored environment variables are documented at the top of each script
-(`STRACE_TESTS`, `STRACE_SHARD`/`STRACE_SHARDS`, `QEMU_TIMEOUT`, `QEMU_SMP`, …).
+(`STRACE_TESTS`, `STRACE_SHARD`/`STRACE_SHARDS`, `QEMU_TIMEOUT`, `QEMU_SMP`, ...).
 
 ## License
 
