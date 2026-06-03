@@ -80,7 +80,7 @@ upstream.
 - sparc64 — `mmap`: the test's fixed hint address falls inside the sparc64 VA
   hole.
 
-**GCC** ([`ci/gcc-patches/`](ci/gcc-patches)):
+**GCC** ([`ci/patches/gcc/`](ci/patches/gcc)):
 
 - m68k — `fold-mem-offsets`: the pass folds a constant offset into a base
   register still used by a memory-to-memory move, miscompiling code at `-O2`.
