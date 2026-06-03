@@ -1,4 +1,4 @@
-#!/bin/sh -efu
+#!/bin/sh -efux
 # SPDX-License-Identifier: GPL-2.0-or-later
 
 # Usage: run-qemu <arch>

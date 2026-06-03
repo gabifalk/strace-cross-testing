@@ -6,6 +6,8 @@ case "${1:-}" in
 	*) exit 0 ;;
 esac
 
+set -x
+
 mount -t proc  proc /proc 2>/dev/null || :
 mount -t sysfs sys  /sys  2>/dev/null || :
 

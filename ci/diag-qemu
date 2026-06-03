@@ -1,4 +1,4 @@
-#!/bin/sh -efu
+#!/bin/sh -efux
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Diagnostic harness: boot a guest and run a standalone probe binary instead of
 # 'make check'. Reuses lib.sh for per-arch QEMU settings; only the strace 9p
