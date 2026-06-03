@@ -48,8 +48,8 @@ two jobs, run as a matrix over the architectures:
      per-arch config to produce the cross toolchain, kernel, and an initramfs
      (busybox + the host QEMU build).
    - [`ci/build-strace <arch>`](ci/build-strace) — checks out upstream strace,
-     applies the patches in [`ci/patches/`](ci/patches), and cross-compiles
-     strace plus every `tests*/` directory with the toolchain.
+     applies the patches in [`ci/strace-patches/`](ci/strace-patches), and
+     cross-compiles strace plus every `tests*/` directory with the toolchain.
    - The Buildroot output and the strace build tree are cached (and uploaded as
      artifacts) keyed on the Buildroot version, arch config, strace commit, and
      patch set, so the test job reuses them without rebuilding.
@@ -70,7 +70,7 @@ two jobs, run as a matrix over the architectures:
 Failures uncovered on these architectures are tracked as patches and reported
 upstream.
 
-**strace** ([`ci/patches/`](ci/patches), applied by `ci/build-strace`):
+**strace** ([`ci/strace-patches/`](ci/strace-patches), applied by `ci/build-strace`):
 
 - m68k — `restart_syscall-p`, `prctl-seccomp-filter-v`, `seccomp-filter-v`: on
   m68k libc reads the thread pointer via `get_thread_area`, which pollutes

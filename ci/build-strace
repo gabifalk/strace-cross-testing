@@ -21,7 +21,7 @@ if [ ! -d "$STRACE_SRC" ]; then
 fi
 
 set +f
-for patch in "$CI_TOP"/patches/*.patch; do
+for patch in "$CI_TOP"/strace-patches/*.patch; do
 	[ -e "$patch" ] || continue
 	git -C "$STRACE_SRC" -c user.name=ci -c user.email=ci@localhost \
 		am --whitespace=nowarn "$patch" ||
