@@ -1,0 +1,89 @@
+From b7e7762ea6b084c875dc359e1bcb2ee0fda319a9 Mon Sep 17 00:00:00 2001
+From: Gabi Falk <gabifalk@gmx.com>
+Date: Tue, 2 Jun 2026 08:00:00 +0000
+Subject: [PATCH] mips: do not mistake a syscall return value for a syscall
+ number
+
+On MIPS the syscall number is passed in the v0 register, which holds the
+syscall return value on exit.  When strace attaches to a tracee stopped in
+the middle of a syscall, PTRACE_GET_SYSCALL_INFO reports
+PTRACE_SYSCALL_INFO_NONE rather than a syscall entry, so get_scno() falls
+back to arch_get_scno(), which reads v0 and treats it as a syscall number.
+For an interrupted restartable syscall v0 holds ERESTART_RESTARTBLOCK, so
+e.g. restart_syscall-p reports
+
+    restart_syscall(<... resuming interrupted syscall_0x204 ...>) = 0
+
+When PTRACE_GET_SYSCALL_INFO is supported and does not report a syscall
+entry, there is no syscall number in v0, so do not read it.  On older
+kernels without PTRACE_GET_SYSCALL_INFO the value of v0 is still used, as
+before.
+
+* src/linux/mips/get_scno.c (arch_get_scno): Return 0 when
+PTRACE_GET_SYSCALL_INFO is supported but does not report a syscall entry.
+* tests/restart_syscall-p-mips.expected: New file.
+* tests/restart_syscall-p.test: Use it on mips.
+* tests/Makefile.am (check_DATA): Add restart_syscall-p-mips.expected.
+---
+ src/linux/mips/get_scno.c             | 4 ++++
+ tests/Makefile.am                     | 1 +
+ tests/restart_syscall-p-mips.expected | 2 ++
+ tests/restart_syscall-p.test          | 9 ++++++++-
+ 4 files changed, 15 insertions(+), 1 deletion(-)
+ create mode 100644 tests/restart_syscall-p-mips.expected
+
+diff --git a/src/linux/mips/get_scno.c b/src/linux/mips/get_scno.c
+index 70054635c..619c785b8 100644
+--- a/src/linux/mips/get_scno.c
++++ b/src/linux/mips/get_scno.c
+@@ -9,6 +9,10 @@
+ static int
+ arch_get_scno(struct tcb *tcp)
+ {
++	/* v0 is a reliable source of the syscall number only on entering.  */
++	if (ptrace_get_syscall_info_supported && !ptrace_syscall_info_is_entry())
++		return 0;
++
+ 	tcp->scno = mips_REG_V0;
+ 
+ 	if (!scno_in_range(tcp->scno)) {
+diff --git a/tests/Makefile.am b/tests/Makefile.am
+index 486424b7a..fec1cd5c9 100644
+--- a/tests/Makefile.am
++++ b/tests/Makefile.am
+@@ -810,6 +810,7 @@ check_DATA = \
+ 	qual_inject-signal.expected \
+ 	qualify_personality_empty.in \
+ 	regex.in \
++	restart_syscall-p-mips.expected \
+ 	restart_syscall-p.expected \
+ 	rt_sigaction.awk \
+ 	sched.in \
+diff --git a/tests/restart_syscall-p-mips.expected b/tests/restart_syscall-p-mips.expected
+new file mode 100644
+index 000000000..33c4682a8
+--- /dev/null
++++ b/tests/restart_syscall-p-mips.expected
+@@ -0,0 +1,2 @@
++restart_syscall(<... resuming interrupted system call ...>) = 0
++exit_group(0) = ?
+diff --git a/tests/restart_syscall-p.test b/tests/restart_syscall-p.test
+index 3949a8144..895ba89ab 100755
+--- a/tests/restart_syscall-p.test
++++ b/tests/restart_syscall-p.test
+@@ -17,4 +17,11 @@ tracee_pid=$!
+ ../sleep 1
+ 
+ run_strace -qq -a14 -e trace=restart_syscall,exit_group -p $tracee_pid
+-match_diff
++
++# On MIPS the syscall number is passed in v0, which when attaching to a tracee
++# stopped in the middle of a syscall holds the syscall return value rather than
++# the syscall number, so the interrupted syscall cannot be identified.
++case "$STRACE_ARCH" in
++mips)	match_diff "$LOG" "$srcdir/restart_syscall-p-mips.expected" ;;
++*)	match_diff ;;
++esac
+-- 
+gabi
+
