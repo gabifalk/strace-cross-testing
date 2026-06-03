@@ -64,8 +64,9 @@ set -- "$@" -device "$BLK_DEVICE,drive=straceblk$ninep_bus"
 set -- "$@" -append "console=$CONSOLE"
 set -- "$@" -nographic -no-reboot
 
-echo >&2 "$PROG: booting $ARCH guest ($QEMU_SMP vcpu, timeout ${QEMU_TIMEOUT:-3600}s)"
-"$@" 2>&1 | tee "$OUTPUT_BASE/console.log"
+QEMU_TIMEOUT="${QEMU_TIMEOUT:-7200}"
+echo >&2 "$PROG: booting $ARCH guest ($QEMU_SMP vcpu, timeout ${QEMU_TIMEOUT}s)"
+timeout -k 10s "${QEMU_TIMEOUT}s" "$@" 2>&1 | tee "$OUTPUT_BASE/console.log"
 
 "$CI_TOP/ext2-extract" "$STRACE_IMAGE" "$STRACE_BUILD"
 
