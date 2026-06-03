@@ -8,7 +8,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: ["m68k", "s390x", "sparc64"]
+        arch: ["m68k", "s390x", "sparc64", "mips64el"]
     uses: ./.github/workflows/arch.yml
     with:
       arch: ${{ matrix.arch }}
