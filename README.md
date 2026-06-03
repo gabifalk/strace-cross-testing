@@ -12,11 +12,12 @@ struct layouts -- on platforms that rarely get tested elsewhere.
 
 ## Architectures
 
-| Arch      | QEMU machine | Notes                                            |
-|-----------|--------------|--------------------------------------------------|
-| `m68k`    | `virt`       | no dedicated TP register, 2-byte `int` alignment |
-| `s390x`   | (default)    | z15 target                                       |
-| `sparc64` | `sun4u`      | 64-bit, VA hole in the address space             |
+| Arch       | QEMU machine | Notes                                            |
+|------------|--------------|--------------------------------------------------|
+| `m68k`     | `virt`       | no dedicated TP register, 2-byte `int` alignment |
+| `s390x`    | (default)    | z15 target                                       |
+| `sparc64`  | `sun4u`      | 64-bit, VA hole in the address space             |
+| `mips64el` | `malta`      | 64-bit little-endian, n64 ABI                    |
 
 Per-architecture QEMU and guest settings (machine, emulator binary, memory,
 kernel image, virtio transport, console) live in [`ci/lib.sh`](ci/lib.sh).
@@ -25,11 +26,11 @@ Each architecture has a Buildroot defconfig under
 
 ## Status
 
-| Patches  | `m68k` | `s390x` | `sparc64` |
-|----------|:------:|:-------:|:---------:|
-| strace   | -- (4) |   --    |   -- (1)  |
-| gcc      |   1    |   --    |    --     |
-| elfutils |   --   |   --    |    --     |
+| Patches  | `m68k` | `s390x` | `sparc64` | `mips64el` |
+|----------|:------:|:-------:|:---------:|:----------:|
+| strace   | -- (4) |   --    |   -- (1)  |     2      |
+| gcc      |   1    |   --    |    --     |     --     |
+| elfutils |   --   |   --    |    --     |     1      |
 
 A plain number is patches currently carried; a number in parentheses is patches
 since accepted upstream and no longer carried. These are bugs found by the
@@ -66,13 +67,30 @@ two jobs, run as a matrix over the architectures:
 ## Patches
 
 Failures uncovered on these architectures are tracked as patches and reported
-upstream. The patches still carried here are applied at build time by
-`ci/build-strace`.
+upstream.
+
+**strace** ([`ci/strace-patches/`](ci/strace-patches), applied by
+`ci/build-strace`):
+
+- mips64el -- `ioctl_pidfd_get_info`: the test hardcoded the `SIGABRT` name for
+  `coredump_signal`, but MIPS names signal 6 `SIGIOT`; decode it through
+  `signal2name()` so the expected output matches.
+- mips64el -- `restart_syscall-p`: on MIPS the syscall number shares the `v0`
+  register with the syscall return value, so on attach strace misread an
+  interrupted syscall's return value as a syscall number; skip `v0` when
+  `PTRACE_GET_SYSCALL_INFO` reports no syscall entry.
 
 **GCC** ([`ci/patches/gcc/`](ci/patches/gcc)):
 
 - m68k -- `fold-mem-offsets`: the pass folds a constant offset into a base
   register still used by a memory-to-memory move, miscompiling code at `-O2`.
+
+**elfutils** ([`ci/patches/elfutils/`](ci/patches/elfutils)):
+
+- mips64el -- MIPS unwinding: the MIPS backend omits a `same_value` default rule
+  for the return-address register `ra` (`r31`), so libdwfl stops after one frame
+  and `strace -k` at a syscall site shows only the libc entry; add the missing
+  rule.
 
 ## Upstreamed
 

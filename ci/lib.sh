@@ -70,6 +70,15 @@ sparc64)
 	NINEP_BUS=pciB
 	CONSOLE=ttyS0
 	;;
+mips64el)
+	QEMU_MACHINE=malta
+	QEMU_BIN=qemu-system-mips64el
+	QEMU_MEM=2G
+	QEMU_SMP=1
+	KERNEL_IMAGE=images/vmlinux
+	NINEP_DEVICE=virtio-9p-pci
+	CONSOLE=ttyS0
+	;;
 *)
 	unknown_arch
 	;;
