@@ -1,0 +1,48 @@
+From 01e63ea1bff0fc43efbd0787159eef6e63fbe881 Mon Sep 17 00:00:00 2001
+From: Gabi Falk <gbifalk@gmail.com>
+Date: Wed, 3 Jun 2026 00:00:00 +0000
+Subject: [PATCH] backends: Fix MIPS unwinding past a frame that does not save
+ ra
+
+mips_abi_cfi () installs DW_CFA_same_value default rules for the
+callee-saved registers (s0-s7, gp, sp, fp) but not for the return
+address register r31 (ra), even though it is the CIE
+return_address_register.
+
+For a frame whose CFI does not provide an explicit rule for ra -- for
+instance a leaf function such as a glibc syscall stub, whose FDE consists
+only of DW_CFA_nops and therefore relies entirely on the ABI defaults --
+ra is then left with the initial "undefined" rule.  libdwfl's CFI
+unwinder treats an undefined return address register as the end of the
+call stack: it sets the unwound PC state to DWFL_FRAME_STATE_PC_UNDEFINED
+and stops.  As a result a backtrace through such a frame ends at the
+innermost frame instead of continuing to the caller, e.g. a stack trace
+taken at a syscall site shows only the libc entry and nothing above it.
+
+The return address register has to default to DW_CFA_same_value so that a
+frame which does not save ra is unwound using its live value, exactly as
+the aarch64 (r30/lr) and s390 (r14) backends already do for their
+respective return address registers.
+
+Add the missing DW_CFA_same_value rule for r31.
+
+Signed-off-by: Gabi Falk <gbifalk@gmail.com>
+---
+ backends/mips_cfi.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/backends/mips_cfi.c b/backends/mips_cfi.c
+index 60cf8111..c13c1793 100644
+--- a/backends/mips_cfi.c
++++ b/backends/mips_cfi.c
+@@ -54,6 +54,7 @@ mips_abi_cfi (Ebl *ebl __attribute__ ((unused)), Dwarf_CIE *abi_info)
+       DW_CFA_same_value, ULEB128_7 (28), /* gp */
+       DW_CFA_same_value, ULEB128_7 (29), /* sp */
+       DW_CFA_same_value, ULEB128_7 (30), /* fp */
++      DW_CFA_same_value, ULEB128_7 (31), /* ra */
+ 
+       DW_CFA_val_offset, ULEB128_7 (29), ULEB128_7 (0),
+     };
+-- 
+gabi
+
