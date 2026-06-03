@@ -1,0 +1,94 @@
+From c56f23f03a0e372a14b0d0d3149b433f08a48765 Mon Sep 17 00:00:00 2001
+From: Gabi Falk <gabifalk@gmx.com>
+Date: Wed, 3 Jun 2026 08:00:00 +0000
+Subject: [PATCH] tests: decode coredump_signal name per architecture in
+ ioctl_pidfd_get_info
+
+PIDFD_GET_INFO's coredump_signal is decoded with printsignal(), which
+prints the signal name from the per-architecture signal table.  On MIPS
+signal 6 is named SIGIOT rather than SIGABRT, so strace prints
+
+    coredump_signal=SIGIOT
+
+while the test hardcoded the SIGABRT name via XLAT_KNOWN(6, "SIGABRT") and
+failed on mips64el:
+
+    ioctl_pidfd_get_info-success.gen.test: failed test: \
+        ../../src/strace ... output mismatch
+
+(the -Xraw variant passed, as raw mode prints the signal number).
+
+Use signal2name(), which already knows the architecture-specific name, via
+the runtime XLAT_FMT_D/XLAT_SEL pair instead of the compile-time XLAT_KNOWN
+literal.  signal2name() cannot be used inside XLAT_KNOWN because in the
+verbose mode that macro concatenates string literals, which requires its
+name argument to be a literal.
+
+* tests/ioctl_pidfd_get_info.c (injected_pidfd_get_info_decode_checks):
+Print coredump_signal with XLAT_FMT_D and signal2name(SIGABRT) instead of
+XLAT_KNOWN(6, "SIGABRT").
+---
+ tests/ioctl_pidfd_get_info.c | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/tests/ioctl_pidfd_get_info.c b/tests/ioctl_pidfd_get_info.c
+index ceee89ae9..023ddb284 100644
+--- a/tests/ioctl_pidfd_get_info.c
++++ b/tests/ioctl_pidfd_get_info.c
+@@ -350,7 +350,7 @@ injected_pidfd_get_info_decode_checks(struct pidfd_info *info)
+ 	       ", ruid=%u, rgid=%u, euid=%u, egid=%u"
+ 	       ", suid=%u, sgid=%u, fsuid=%u, fsgid=%u"
+ 	       ", exit_code=%s, coredump_mask=%s"
+-	       ", coredump_signal=%s, coredump_code=%u"
++	       ", coredump_signal=" XLAT_FMT_D ", coredump_code=%u"
+ 	       ", supported_mask=%s}) = %s\n",
+ 	       XLAT_SEL(PIDFD_GET_INFO_cmd.val, PIDFD_GET_INFO_cmd.str),
+ 	       XLAT_KNOWN(0xff, PIDFD_INFO_MASK_all_known_str),
+@@ -360,7 +360,7 @@ injected_pidfd_get_info_decode_checks(struct pidfd_info *info)
+ 	       info->suid, info->sgid, info->fsuid, info->fsgid,
+ 	       "[{WIFEXITED(s) && WEXITSTATUS(s) == 2}]",
+ 	       XLAT_KNOWN(0x1, "PIDFD_COREDUMPED"),
+-	       XLAT_KNOWN(6, "SIGABRT"),
++	       XLAT_SEL(SIGABRT, signal2name(SIGABRT)),
+ 	       info->coredump_code,
+ 	       XLAT_KNOWN(0x1, "PIDFD_INFO_PID"),
+ 	       errstr);
+@@ -371,7 +371,7 @@ injected_pidfd_get_info_decode_checks(struct pidfd_info *info)
+ 	       ", ruid=%u, rgid=%u, euid=%u, egid=%u"
+ 	       ", suid=%u, sgid=%u, fsuid=%u, fsgid=%u"
+ 	       ", exit_code=%s, coredump_mask=%s"
+-	       ", coredump_signal=%s, coredump_code=%u}) = %s\n",
++	       ", coredump_signal=" XLAT_FMT_D ", coredump_code=%u}) = %s\n",
+ 	       XLAT_SEL(PIDFD_GET_INFO_ver2_cmd.val,
+ 		        PIDFD_GET_INFO_ver2_cmd.str),
+ 	       XLAT_KNOWN(0xff, PIDFD_INFO_MASK_all_known_str),
+@@ -381,7 +381,7 @@ injected_pidfd_get_info_decode_checks(struct pidfd_info *info)
+ 	       info->suid, info->sgid, info->fsuid, info->fsgid,
+ 	       "[{WIFEXITED(s) && WEXITSTATUS(s) == 2}]",
+ 	       XLAT_KNOWN(0x1, "PIDFD_COREDUMPED"),
+-	       XLAT_KNOWN(6, "SIGABRT"),
++	       XLAT_SEL(SIGABRT, signal2name(SIGABRT)),
+ 	       info->coredump_code,
+ 	       errstr);
+ 
+@@ -391,7 +391,7 @@ injected_pidfd_get_info_decode_checks(struct pidfd_info *info)
+ 	       ", ruid=%u, rgid=%u, euid=%u, egid=%u"
+ 	       ", suid=%u, sgid=%u, fsuid=%u, fsgid=%u"
+ 	       ", exit_code=%s, coredump_mask=%s"
+-	       ", coredump_signal=%s}) = %s\n",
++	       ", coredump_signal=" XLAT_FMT_D "}) = %s\n",
+ 	       XLAT_SEL(PIDFD_GET_INFO_ver1_cmd.val,
+ 		        PIDFD_GET_INFO_ver1_cmd.str),
+ 	       XLAT_KNOWN(0xff, PIDFD_INFO_MASK_all_known_str),
+@@ -401,7 +401,7 @@ injected_pidfd_get_info_decode_checks(struct pidfd_info *info)
+ 	       info->suid, info->sgid, info->fsuid, info->fsgid,
+ 	       "[{WIFEXITED(s) && WEXITSTATUS(s) == 2}]",
+ 	       XLAT_KNOWN(0x1, "PIDFD_COREDUMPED"),
+-	       XLAT_KNOWN(6, "SIGABRT"),
++	       XLAT_SEL(SIGABRT, signal2name(SIGABRT)),
+ 	       errstr);
+ 
+ 	do_ioctl_fd(-1, PIDFD_GET_INFO_ver0_cmd.val, (uintptr_t) info);
+-- 
+gabi
+
